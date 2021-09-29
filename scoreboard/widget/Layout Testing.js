@@ -67,20 +67,7 @@ const getLogo = async (src) => {
     return img
 }
 
-async function initGame(el, event) {
-    await addStandings(el, event.homeStandings, event.awayStandings)
-    el.addSpacer(5)
-    let home = await getLogo(event.homeTeam)
-    let away = await getLogo(event.awayTeam)
-    await addLogos(el, home, away)
-    el.addSpacer(8)
-    await addScores(el, event.homeScore, event.awayScore, event.status, event.period)
-    if (event.status === 'In Progress') {
-        el.borderColor = new Color('#FFD700', .6)
-        el.borderWidth = 1.5
-        el.cornerRadius = 5
-    }
-}
+
 
 async function addStandings(el, standings) {
   let standingsStack = await addStack(el, 'horizontal', true)
@@ -216,80 +203,6 @@ async function initGameScheduled(el,event,sizes) {
   game.addSpacer()
 }
 
-async function initGameAlt(el, event) {
-  let awayStack = await addStack(el,'vertical',true,eventSize)
-awayStack.borderColor = new Color('#FFD700', .6)
-//         awayStack.borderWidth = 1.5
-//         awayStack.cornerRadius = 5
-  awayStack.addSpacer()
-  let top = await addStack(awayStack,'horizontal',true)
-//    top.setPadding(3,3,3,3)
-   top.addSpacer()
-  await addText(top, event.awayStandings, 'small')
-   top.addSpacer()
-  awayStack.addSpacer(8)
-  let mid = await addStack(awayStack,'horizontal',true)
-  mid.addSpacer()
-  await addImage(mid, await getLogo(event.awayTeam))
-  mid.addSpacer()
-  awayStack.addSpacer(8)
-  let bottom = await addStack(awayStack,'horizontal',true)
-  bottom.addSpacer()
-  await addText(bottom, event.awayScore)
-  bottom.addSpacer()
-  awayStack.addSpacer()
-  let atStack = await addStack(el, 'vertical',true,atSize)
-atStack.borderColor = new Color('#FFD700', .6)
-//         atStack.borderWidth = 1.5
-//         atStack.cornerRadius = 5
-  atStack.addSpacer()
-  let atTop = await addStack(atStack,'horizontal',true)
-  atTop.addSpacer()
-//   await addText(atStack,' ')
-  await addText(atTop,' ')
-  atTop.addSpacer()
-  atStack.addSpacer(15)
-  
-  let atMid = await addStack(atStack,'horizontal',true)
-//   atMid.setPadding(5,5,5,5)
-  atMid.addSpacer()
-//   await addText(atStack,'@')
-  await addText(atMid,'@')
-  atMid.addSpacer()
-  atStack.addSpacer(15)
-  
-  let atBot = await addStack(atStack,'horizontal',true)
-//   atBot.setPadding(2, 2, 2, 2)
-  atBot.addSpacer()
-  
-//   await addText(atStack,event.period)
-  await addText(atBot,event.period,event.period)
-  atBot.addSpacer()
-  
-  atStack.addSpacer()
-  let homeStack = await addStack(el, 'vertical',true,eventSize)
-  homeStack.addSpacer()
-  let htop = await addStack(homeStack,'horizontal',true)
-  htop.addSpacer()
-  await addText(htop, event.homeStandings, 'small')
-  htop.addSpacer()
-  homeStack.addSpacer(8)
-  let hmid = await addStack(homeStack,'horizontal',true)
-  hmid.addSpacer()
-  await addImage(hmid, await getLogo(event.homeTeam))
-  hmid.addSpacer()
-  homeStack.addSpacer(8)
-  let hbottom = await addStack(homeStack,'horizontal',true)
-  hbottom.addSpacer()
-  await addText(hbottom, event.homeScore)
-  hbottom.addSpacer()
-  homeStack.addSpacer()
-  if (event.status === 'In Progress') {
-        el.borderColor = new Color('#FFD700', .6)
-        el.borderWidth = 1.5
-        el.cornerRadius = 5
-    }
-}
 
 const test_games = [
     {
@@ -405,36 +318,6 @@ async function createScoreboardAlt(games) {
   return scoreboard
 }
 
-async function createScoreBoard (games) {
-    let scoreboard = await initWidget()
-    if (widgetSize == 'small') {
-        await initGame(scoreboard, games[0])
-    } else {
-        let s = await addStack(scoreboard,'horizontal', true)
-         s.addSpacer()
-        await initGameAlt(await addStack(s, 'horizontal', true, gameSize), games[0])
-        s.addSpacer()
-        await initGameAlt(await addStack(s, 'horizontal', true, gameSize), games[1])
-        s.addSpacer()
-        if (widgetSize == 'large') {
-            scoreboard.addSpacer(10)
-            let s2 = await addStack(scoreboard, 'horizontal', true)
-            s2.addSpacer()
-            await initGameAlt(await addStack(s2, 'horizontal', true, gameSize), games[2])
-            s2.addSpacer()
-            await initGameAlt(await addStack(s2, 'horizontal', true, gameSize), games[3])
-            s2.addSpacer()
-            scoreboard.addSpacer(10)
-//             let s3 = await addStack(scoreboard, 'horizontal', true)
-//             s3.addSpacer()
-//             await initGame(await addStack(s3, 'vertical', true, new Size(120,90)), games[4])
-//             s3.addSpacer()
-//             await initGame(await addStack(s3, 'vertical', true, new Size(120,90)), games[5])
-//             s3.addSpacer()
-        }
-    }
-    return scoreboard
-}
 
 const widgetSize = 'large'
 const fm = FileManager.iCloud()
