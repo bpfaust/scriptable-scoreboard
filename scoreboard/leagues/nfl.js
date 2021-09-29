@@ -151,6 +151,7 @@ async function getNFLRivals(favorites) {
   let nflWeeks = 17
   let rivals = new Set();
   for (fav of favorites) {
+    rivals.add(fav.id)
     let conf = fav.group.slice(0, 3)
     let favStanding
     let conf_standings = current_standings[conf]
@@ -161,23 +162,31 @@ async function getNFLRivals(favorites) {
     }
     if (favStanding.gamesPlayed > 12) {
         for (c of conf_standings) {
+            if (parseInt(c.id) == parseInt(fav.id)) {
+                continue
+            }
             if (fav.made_playoffs) {
-                if (favStanding.seed <= 4) {
-                    if (c.seed <= 4 && Math.abs(favStanding.games_back - c.games_back) <= nflWeeks - favStanding.gamesPlayed) {
-                        rivals.add(c.id)
-                    } else if (!favStanding.playoff_status_text.includes('Clinched Division') && c.division == fav.group && Math.abs(favStanding.games_back - c.games_back) <= nflWeeks - favStanding.gamesPlayed) {
-                        rivals.add(c.id)
+                if (parseInt(favStanding.seed) <= 4) {
+                    if (parseInt(c.seed) <= 4 && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                        console.log(c.id.toString()+' = other division leader, reachable')
+                        rivals.add(parseInt(c.id))
+                    } else if (!favStanding.playoff_status_text.includes('Clinched Division') && c.division == fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                        console.log(c.id.toString()+' = division member, reachable, made playoffs')
+                        rivals.add(parseInt(c.id))
                     }
                 } else {
-                    if (c.seed <= 7 && Math.abs(favStanding.games_back - c.games_back) <= nflWeeks - favStanding.gamesPlayed) {
-                        rivals.add(c.id)
+                    if (parseInt(c.seed) <= 7 && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                        console.log(c.id.toString()+' = reachable, other wildcard team')
+                        rivals.add(parseInt(c.id))
                     }
                 }
             } else {
-                if (!c.playoff_status_text.includes('Clinched Division') && c.seed <= favStanding.seed && c.division == fav.group && Math.abs(favStanding.games_back - c.games_back) <= nflWeeks - favStanding.gamesPlayed) {
-                    rivals.add(c.id)
-                } else if ([5,6,7].includes(c.seed) && c.seed <= favStanding.seed && c.division != fav.group && Math.abs(favStanding.games_back - c.games_back) <= nflWeeks - favStanding.gamesPlayed) {
-                    rivals.add(c.id)
+                if (!c.playoff_status_text.includes('Clinched Division') && parseInt(c.seed) <= parseInt(favStanding.seed) && c.division == fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                    console.log(c.id.toString()+' = division member, unclinched, higher seed, reachable')
+                    rivals.add(parseInt(c.id))
+                } else if ([5,6,7].includes(parseInt(c.seed)) && parseInt(c.seed) <= parseInt(favStanding.seed) && c.division != fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                    console.log(c.id.toString()+' = other team in the hunt')
+                    rivals.add(parseInt(c.id))
                 }
             }
         }
