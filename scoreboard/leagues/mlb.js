@@ -2,6 +2,9 @@
 // These must be at the very top of the file. Do not edit.
 // icon-color: red; icon-glyph: baseball-ball;
 
+function copyObject(object) {
+  return JSON.parse(JSON.stringify(object));
+}
 
 function getFormattedURLDate(date, date_type) {
     let working_date = new Date(date);
@@ -104,7 +107,7 @@ async function getMLBRivals(favorites, current_standings) {
     }
     if (fav_standing.games_played > 100) {
       for (c of current_standings) {
-        if (fav_standing.division == c.division && fav_standing.team.id != c.team.id && Math.max(2,parseInt(fav_standing.div_place)) >= parseInt(c.div_place) && parseFloat(fav_standing.div_gm_back) < 7) {
+        if (fav_standing.division == c.division && fav_standing.team.id != c.team.id && (Math.max(2,parseInt(fav_standing.div_place)) >= parseInt(c.div_place) || Math.abs(parseInt(fav_standing.div_place)-parseInt(c.div_place)) == 1) && Math.abs(parseFloat(fav_standing.div_gm_back)-parseFloat(c.div_gm_back)) < 7) {
           req_teams.add(parseInt(c.team.id))
         }
         if (!fav_standing.div_lead && !c.div_lead) {
