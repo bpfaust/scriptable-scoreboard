@@ -66,10 +66,12 @@ async function getMLBStandings () {
         games_played : tm.gamesPlayed,
         division : dv_info.id,
         division_name : dv_info.nameshort,
+        div_leader : tm.divisionLeader,
         div_place : tm.divisionRank,
         div_place_str : tm.divisionRank+nth(parseInt(tm.divisionRank)),
+        lg_place_str: tm.leageRank+nth(parseInt(tm.leagueRank)),
         wc_place : tm.wildCardRank,
-        wc_place_str : tm.wildCardRank+nth(parseInt(tm.wildCardRank)),
+        wc_place_str : 'W'+tm.wildCardRank,
         div_gm_back : tm.divisionGamesBack,
         wc_gm_back : tm.wildCardGamesBack,
         league : lg,
@@ -85,16 +87,16 @@ async function getMLBStandings () {
 
 let testFave = [{"id":111,"group":"201","name":"Boston Red Sox","league":"MLB","hideScores":false,"showRivals":true,"logo":"https://www.thesportsdb.com/images/media/team/badge/stpsus1425120215.png","theSportsDBID":"135252"}]
 
-async function getMLBRivals(favorites, current_standings=await getMLBStandings()) {
+async function getMLBRivals(favorites, current_standings) {
   //flag all the teams related to the favorites once all standings compiled
   // those in front in division and those in front in wc
   // if in first, flag second place
   // if more than seven games out dont bother
   let req_teams = new Set();
+  let fav_standing
   
   for (fav of favorites) {
     req_teams.add(parseInt(fav.id))
-    let fav_standing
     for (tm of current_standings) {
       if (parseInt(tm.team.id) == parseInt(fav.id)) {
         fav_standing = copyObject(tm)
@@ -102,36 +104,44 @@ async function getMLBRivals(favorites, current_standings=await getMLBStandings()
     }
     if (fav_standing.games_played > 100) {
       for (c of current_standings) {
-        if (fav_standing.)
+        if (fav_standing.division == c.division && fav_standing.team.id != c.team.id && Math.max(2,parseInt(fav_standing.div_place)) >= parseInt(c.div_place) && parseFloat(fav_standing.div_gm_back) < 7) {
+          req_teams.add(parseInt(c.team.id))
+        }
+        if (!fav_standing.div_lead && !c.div_lead) {
+          if (fav_standing.league == c.league && Math.max(3,parseInt(fav_standing.wc_place)) >= parseInt(c.wc_place) && fav_standing.team.id != c.team.id && parseFloat(fav_standing.wc_gm_back) < 7) {
+            req_teams.add(parseInt(c.team.id))
+          }
+        }
       }
     }
   }
-
-  for (d_tm of latest_standings) {
-    if (fav_info.division == d_tm.division && Math.max(2,parseInt(fav_info.div_place)) >= parseInt(d_tm.div_place) && fav_info.team.id != d_tm.team.id && parseFloat(fav_info.div_gm_back) < 7) {
-      req_teams.push(d_tm.team);
-    }
-    if (!fav_info.div_lead && !d_tm.div_lead) {
-      if (fav_info.league == d_tm.league && Math.max(3,parseInt(fav_info.wc_place)) >= parseInt(d_tm.wc_place) && fav_info.team.id != d_tm.team.id && parseFloat(fav_info.wc_gm_back) < 7) {
-      req_teams.push(d_tm.team);
-      }
-    }
-  }
-  return req_teams;
+  return Array.from(req_teams)
 }
 
-if (parseInt(tm.team.id) == parseInt(favorites.id)) {
-  trimmed_team.favorite = true;
-  if (!favorite_division.includes(dv)) {
-    favorite_division.push(dv)
-  }
-  fav_info = JSON.parse(JSON.stringify(trimmed_team));
-  if (fav_info.div_gm_back == '-') {
-    fav_info.div_gm_back = "0";
-  }
-  if (fav_info.wc_gm_back == '-') {
-    fav_info.wc_gm_back = "0";
-  }
+async function getMLBTeams(favorites) {
+    let current_standings = await getMLBStandings()
+    let team_ids = await getMLBRivals(favorites, current_standings)
+    let final_teams = []
+    for (tm of current_standings) {
+        for (t of team_ids) {
+            if (parseInt(tm.team.id) == parseInt(t)) {
+                text_games_back_div = tm.div_leader ? tm.div_place.toString() : '-'+tm.div_gm_back.toString()
+                if (parseInt(tm.wc_gm_back) > 8 || tm.div_leader) {
+                  text_games_back_wc = false
+                } else {
+                  text_games_back_wc = tm.in_wc ? tm.wc_place_str : '-'+tm.wc_gm_back.toString()
+                }
+                text_standings = !text_games_back_wc ? text_games_back_div : text_games_back_div+' | '+text_games_back_wc
+                team_object = {
+                    name : tm.team.name,
+                    id : t,
+                    standings : text_standings
+                }
+                final_teams.push(team_object)
+            }
+        }
+    }
+    return final_teams
 }
 
 
@@ -192,28 +202,6 @@ const getMLBGames = async (gmDate, teams) => {
 //   gameDate = new Date(now);//
 // }
 
-let configTeams = [
-  {lg : "mlb",
-   fn : "getMLB",
-   id : 111,
-   tmName : "Red Sox",
-   hideScores : false}
-]
 
-async function prepFaves(favorites) {
-  var prepped = {};
-  for (f of favorites) {
-    if (Object.keys(prepped).includes(f.lg)) {
-      prepped[f.lg]["ids"].push(f.tmid);
-    } else {
-      obj = {
-        ids : [f.tmid],
-        fn : f.fn
-      }
-        prepped[f.lg] = JSON.parse(JSON.stringify(obj));
-    }
-  }
-  return prepped;
-}
 
-console.log(await getMLBRivals(configTeams))
+console.log(await getMLBTeams(testFave))

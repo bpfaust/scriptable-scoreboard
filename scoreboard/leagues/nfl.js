@@ -144,7 +144,7 @@ async function getNFLStandings() {
 
 let testFave = [{"id":17,"group":"afce","name":"New England Patriots","league":"nfl","hideScores":false,"showRivals":true,"logo":"https://www.thesportsdb.com/images/media/team/badge/xtwxyt1421431860.png","theSportsDBID":"134920"}]
 
-async function getNFLRivals(favorites, current_standings=await getNFLStandings()) {
+async function getNFLRivals(favorites, current_standings) {
   let nflWeeks = 17
   let rivals = new Set();
   for (fav of favorites) {
@@ -188,16 +188,27 @@ async function getNFLRivals(favorites, current_standings=await getNFLStandings()
   return Array.from(rivals)
 }
 
-let standings = await getNFLStandings()
-let rival_ids = await getNFLRivals(testFave,standings)
-let teams = pivotNFLTeams()
-
-for (rival of rival_ids) {
-    let team_text = teams[rival]['name']
-    for (s of standings) {
-        if (parseInt(s.id) == parseInt(rival)) {
-            team_text += ' are then '+s.seed.toString()+' seed'
+async function getNFLTeams(favorites) {
+    let current_standings = await getNFLStandings()
+    let team_ids = await getNFLRivals(favorites, current_standings)
+    let team_list = pivotNFLTeams()
+    let final_teams = []
+    for (conf in current_standings) {
+        for (s of current_standings[conf]) {
+            for (t of team_ids) {
+                if (parseInt(s.id) == parseInt(t)) {
+                    text_games_back = (parseInt(s.games_back)*-1) > 0 ? "+"+(parseInt(s.games_back) * -1).toString() : (parseInt(s.games_back) * -1).toString()
+                    team_object = {
+                        name : team_list[t]['name'],
+                        id : t,
+                        standings : s.seed.toString()+" | "+text_games_back
+                    }
+                    final_teams.push(team_object)
+                }
+            }
         }
     }
-    console.log(team_text)
+    return final_teams
 }
+
+let test_output = await getNFLTeams(testFave)
