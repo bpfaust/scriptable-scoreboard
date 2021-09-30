@@ -2,6 +2,26 @@
 // These must be at the very top of the file. Do not edit.
 // icon-color: orange; icon-glyph: magic;
 
+let fm = FileManager.iCloud()
+let baseLoc = fm.joinPath(fm.joinPath(fm.libraryDirectory(),'scriptable-scoreboard'),'settings')
+if (!fm.isDirectory(baseLoc)) {
+  fm.createDirectory(baseLoc, true)
+}
+
+function saveFile(filename, contents) {
+  let fileContents = typeof contents == "string" ? contents : JSON.stringify(contents)
+  fm.writeString(fm.joinPath(baseLoc, filename), fileContents)
+}
+
+function readFile(filename, path=baseLoc) {
+  let fullPath = fm.joinPath(path, filename)
+  if (fm.fileExists(fullPath)) {
+    return [true,JSON.parse(fm.readString(fullPath))]
+  } else {
+    return [false,filename+" does not exist"]
+  }
+}
+
 async function generatePrompt(title,message,options,textvals,placeholders) {
     const alert = new Alert()
     alert.title = title
@@ -102,39 +122,86 @@ async function getTeams(league) {
     return output
 }
 
+async function stringSearchSportDB(team_name,league_name) {
+    let url = "https://www.thesportsdb.com/api/v1/json/1/searchteams.php?t="+team_name.replace(/\ /g,"_")
+    let search = await fetchData(url)
+    let result = []
+    let team = {}
+    for (sdbt of search.teams) {
+        team = {}
+        if ((sdbt.strTeam == team_name || sdbt.strAlternate == team_name) && sdbt.strLeague == league_name) {
+            team['name'] = team_name
+            team['logo'] = sdbt.strTeamBadge
+            team['theSportsDBID'] = sdbt.idTeam
+            result.push(team)
+        }
+    }
+    return result
+}
+
+async function updateLogosLookup(results) {
+    let logo_set = new Set()
+    let logo_file = await readFile('logos.txt')
+    let logo_array = logo_file[0] ? log_file[1] : []
+    let new_logo_array = []
+    for (l of logo_array) {
+        logo_set.add(l.name)
+    }
+    for (r of result) {
+        logo_set.add(r.name)
+    }
+    for (ls of logo_set) {
+        found = false
+        for (re of results) {
+            for (lf of logo_array) {
+                if (lf.name === ls) {
+                    new_logo_array.push(lf)
+                    found = true
+                }
+            }
+            if (re.name === ls && !found) {
+                new_logo_array.push(re)
+                found = true
+            }
+        }
+    }
+    await saveFile('logos.txt',new_logo_array)
+    return true
+}
+
 const nflESPNMap = {
-    'Arizona Cardinals' : {id : 22, group: "nfcw", name: "Arizona Cardinals"},
-    'Atlanta Falcons' : {id : 1, group: "nfcs", name: "Atlanta Falcons"},
-    'Buffalo Bills' : {id: 2, group: 'afce', name: "Buffalo Bills"},
-    'Chicago Bears' : {id: 3, group: 'nfcn', name: "Chicago Bears"},
-    'Cincinnati Bengals' : {id: 4, group: "afcn", name: "Cincinnati Bengals"},
-    'Cleveland Browns' : {id: 5, group: "afcn", name: "Cleveland Browns"},
-    'Dallas Cowboys' : {id: 6, group: "nfce", name: "Dallas Cowboys"},
-    'Denver Broncos' : {id : 7, group: "afcw", name: "Denver Broncos"},
-    'Detroit Lions' : {id : 8, group: "nfcn", name: "Detroit Lions"},
-    'Green Bay Packers' : {id: 9, group: "nfcn", name: "Green Bay Packers"},
-    'Tennessee Titans' : {id: 10, group: "afcs", name: "Tennessee Titans"},
-    'Indianapolis Colts' : {id :11, group: "afcs", name: "Indianapolis Colts"},
-    'Kansas City Chiefs' : {id: 12, group: "afcw", name: "Kansas City Chiefs"},
-    'Las Vegas Raiders' : {id: 13, group: "afcw", name: "Las Vegas Raiders"},
-    'Los Angeles Chargers' : {id: 24, group: "afcw", name: "Los Angeles Chargers"},
-    'Los Angeles Rams': {id: 14, group: "nfcw", name: "Los Angeles Rams"},
-    'Miami Dolphins' : {id: 15, group: "afce", name: "Miami Dolphins"},
-    'Minnesota Vikings' : {id: 16, group: "nfcn", name: "Minnesota Vikings"},
-    'New England Patriots' : {id: 17, group: "afce", name: "New England Patriots"},
-    'New Orleans Saints' : {id: 18, group: "nfcs", name: "New Orleans Saints"},
-    'New York Giants' : {id: 19, group: "nfce", name: "New York Giants"},
-    'New York Jets' : {id: 20, group: "afce", name: "New York Jets"},
-    'Philadelphia Eagles' : {id: 21, group: "nfce", name: "Philadelphia Eagles"},
-    'Pittsburgh Steelers' : {id: 23, group: "afcn", name: "Pittsburgh Steelers"},
-    'Seattle Seahawks': {id: 25, group: "nfcw", name: "Seattle Seahawks"},
-    'San Francisco 49ers': {id: 26, group: "nfcw", name: "San Francisco 49ers"},
-    'Tampa Bay Buccaneers': {id: 27, group: "nfcs", name: "Tampa Bay Buccaneers"},
-    'Washington' : {id: 28, group: "nfce", name: "Washington"},
-    'Carolina Panthers' : {id: 29, group: "nfcs", name: "Carolina Panthers"},
-    'Jacksonville Jaguars' : {id: 30, group: "nfcs", name: "Jacksonville Jaguars"},
-    'Baltimore Ravens' : {id: 33, group: "afcn", name: "Baltimore Ravens"},
-    'Houston Texans' : {id: 34, group: "afcs", name: "Houston Texans"}
+    'Arizona Cardinals' : {id : 22, group: "nfcw", name: "Arizona Cardinals",league:"nfl"},
+    'Atlanta Falcons' : {id : 1, group: "nfcs", name: "Atlanta Falcons",league:"nfl"},
+    'Buffalo Bills' : {id: 2, group: 'afce', name: "Buffalo Bills",league:"nfl"},
+    'Chicago Bears' : {id: 3, group: 'nfcn', name: "Chicago Bears",league:"nfl"},
+    'Cincinnati Bengals' : {id: 4, group: "afcn", name: "Cincinnati Bengals",league:"nfl"},
+    'Cleveland Browns' : {id: 5, group: "afcn", name: "Cleveland Browns",league:"nfl"},
+    'Dallas Cowboys' : {id: 6, group: "nfce", name: "Dallas Cowboys",league:"nfl"},
+    'Denver Broncos' : {id : 7, group: "afcw", name: "Denver Broncos",league:"nfl"},
+    'Detroit Lions' : {id : 8, group: "nfcn", name: "Detroit Lions",league:"nfl"},
+    'Green Bay Packers' : {id: 9, group: "nfcn", name: "Green Bay Packers",league:"nfl"},
+    'Tennessee Titans' : {id: 10, group: "afcs", name: "Tennessee Titans",league:"nfl"},
+    'Indianapolis Colts' : {id :11, group: "afcs", name: "Indianapolis Colts",league:"nfl"},
+    'Kansas City Chiefs' : {id: 12, group: "afcw", name: "Kansas City Chiefs",league:"nfl"},
+    'Las Vegas Raiders' : {id: 13, group: "afcw", name: "Las Vegas Raiders",league:"nfl"},
+    'Los Angeles Chargers' : {id: 24, group: "afcw", name: "Los Angeles Chargers",league:"nfl"},
+    'Los Angeles Rams': {id: 14, group: "nfcw", name: "Los Angeles Rams",league:"nfl"},
+    'Miami Dolphins' : {id: 15, group: "afce", name: "Miami Dolphins",league:"nfl"},
+    'Minnesota Vikings' : {id: 16, group: "nfcn", name: "Minnesota Vikings",league:"nfl"},
+    'New England Patriots' : {id: 17, group: "afce", name: "New England Patriots",league:"nfl"},
+    'New Orleans Saints' : {id: 18, group: "nfcs", name: "New Orleans Saints",league:"nfl"},
+    'New York Giants' : {id: 19, group: "nfce", name: "New York Giants",league:"nfl"},
+    'New York Jets' : {id: 20, group: "afce", name: "New York Jets",league:"nfl"},
+    'Philadelphia Eagles' : {id: 21, group: "nfce", name: "Philadelphia Eagles",league:"nfl"},
+    'Pittsburgh Steelers' : {id: 23, group: "afcn", name: "Pittsburgh Steelers",league:"nfl"},
+    'Seattle Seahawks': {id: 25, group: "nfcw", name: "Seattle Seahawks",league:"nfl"},
+    'San Francisco 49ers': {id: 26, group: "nfcw", name: "San Francisco 49ers",league:"nfl"},
+    'Tampa Bay Buccaneers': {id: 27, group: "nfcs", name: "Tampa Bay Buccaneers",league:"nfl"},
+    'Washington' : {id: 28, group: "nfce", name: "Washington",league:"nfl"},
+    'Carolina Panthers' : {id: 29, group: "nfcs", name: "Carolina Panthers",league:"nfl"},
+    'Jacksonville Jaguars' : {id: 30, group: "nfcs", name: "Jacksonville Jaguars",league:"nfl"},
+    'Baltimore Ravens' : {id: 33, group: "afcn", name: "Baltimore Ravens",league:"nfl"},
+    'Houston Texans' : {id: 34, group: "afcs", name: "Houston Texans",league:"nfl"}
 }
 
 let leagueSet = {
@@ -160,71 +227,79 @@ let leagueSet = {
     },
 }
 
-let favorite_list = [];
-let leagueMenu = [];
-let tmMenu = [];
+async function getFavorites() {
+  let favoritesLoad = await readFile('favorites.txt')
+  let favorite_list = favoritesLoad[0] ? favoritesLoad[1] : []
+  return favorite_list
+}
 
-let baseResponse;
-let lgResponse;
-let tresponse;
+async function buildFavorites() {
+    let favorite_list = await getFavorites()
+    let leagueMenu = [];
+    let tmMenu = [];
 
-let addNewTeam = true;
-let baseMenu = ['Add a new favorite', 'Finished']
-let hideScoreMenu = ['Hide scores', 'Show scores']
-let showImpactGames = ['Show other games in scoreboard', 'Do not show']
+    let baseResponse;
+    let lgResponse;
+    let tresponse;
 
-while (addNewTeam) {
-    if (favorite_list.length > 0 && baseMenu.length < 3) {
-        baseMenu.splice(1, 0, "Manage favorites")
-    } else if (favorite_list.length == 0 && baseMenu.length == 3) {
-        baseMenu.splice(1, 1)
-    }
-    baseResponse = baseMenu[await generateAlert("Favorites Setup",baseMenu)]
-    if (baseResponse == 'Finished') {
-        addNewTeam = false;
-    } else if (baseResponse == 'Add a new favorite'){
-        leagueMenu = [];
-        tmMenu = [];
-        for (l of Object.keys(leagueSet)) {
-            leagueMenu.push(leagueSet[l].leagueName)
+    let addNewTeam = true;
+    let baseMenu = ['Add a new favorite', 'Finished']
+    let hideScoreMenu = ['Hide scores', 'Show scores']
+    let showImpactGames = ['Show other games in scoreboard', 'Do not show']
+    let addedTeams = []
+
+    while (addNewTeam) {
+        if (favorite_list.length > 0 && baseMenu.length < 3) {
+            baseMenu.splice(1, 0, "Manage favorites")
+        } else if (favorite_list.length == 0 && baseMenu.length == 3) {
+            baseMenu.splice(1, 1)
         }
-        lgResponse = leagueMenu[await generateAlert("Choose a league",leagueMenu)]
-        teamInfoSet = await getTeams(lgResponse);
-        for (tm of teamInfoSet) {
-            tmMenu.push(tm.name);
-        }
-        tmMenu = tmMenu.sort()
-        tresponse = tmMenu[await generateAlert("Choose team",tmMenu)]
-        hideChoice = await generateAlert("Do you want to hide scores for this team?",hideScoreMenu);
-        showImpactChoice = await generateAlert("Do you want to show games for teams close in standings?", showImpactGames)
-        if (hideChoice == 0) {
-            hide = true;
-        } else {
-            hide = false;
-        }
-        if (showImpactChoice == 0) {
-            rivals = true;
-        } else {
-            rivals = false;
-        }
-        for (f of teamInfoSet) {
-            if (f.name == tresponse) {
-                f['hideScores'] = hide;
-                f['showRivals'] = rivals;
-                url = "https://www.thesportsdb.com/api/v1/json/1/searchteams.php?t="+tresponse.replace(/\ /g,"_")
-                sportsDBSearch = await fetchData(url);
-                for (sdbt of sportsDBSearch.teams) {
-                    if ((sdbt.strTeam == tresponse || sdbt.strAlternate == tresponse) && sdbt.strLeague == lgResponse) {
-                        f['logo'] = sdbt.strTeamBadge;
-                        f['theSportsDBID'] = sdbt.idTeam;
-                    }
-                }
-                favorite_list.push(f)
+        baseResponse = baseMenu[await generateAlert("Favorites Setup",baseMenu)]
+        if (baseResponse == 'Finished') {
+            await saveFile('favorites.txt', favorite_list)
+            written = addedTeams.length > 0 ? await updateLogosLookup(addedTeams) : false
+            addNewTeam = false;
+        } else if (baseResponse == 'Add a new favorite'){
+            leagueMenu = [];
+            tmMenu = [];
+            for (l of Object.keys(leagueSet)) {
+                leagueMenu.push(leagueSet[l].leagueName)
             }
+            lgResponse = leagueMenu[await generateAlert("Choose a league",leagueMenu)]
+            teamInfoSet = await getTeams(lgResponse);
+            for (tm of teamInfoSet) {
+                tmMenu.push(tm.name);
+            }
+            tmMenu = tmMenu.sort()
+            tresponse = tmMenu[await generateAlert("Choose team",tmMenu)]
+            hideChoice = await generateAlert("Do you want to hide scores for this team?",hideScoreMenu);
+            showImpactChoice = await generateAlert("Do you want to show games for teams close in standings?", showImpactGames)
+            if (hideChoice == 0) {
+                hide = true;
+            } else {
+                hide = false;
+            }
+            if (showImpactChoice == 0) {
+                rivals = true;
+            } else {
+                rivals = false;
+            }
+            for (f of teamInfoSet) {
+                if (f.name == tresponse) {
+                    f['hideScores'] = hide;
+                    f['showRivals'] = rivals;
+                    tsdbSearch = await stringSearchSportDB(tresponse,lgResponse)
+                    f['logo'] = tsdbSearch[0].logo;
+                    f['theSportsDBID'] = tsdbSearch[0].theSportsDBID;
+                    favorite_list.push(f)
+                    added_teams.push(tsdbSearch[0])
+                }
+            }
+        } else {
+            edit = await editFavorites(favorite_list)
         }
-    } else {
-        edit = await editFavorites(favorite_list)
     }
+return true
 }
 /*
 units: {
@@ -272,4 +347,4 @@ async function editFavorites(favoritesData) {
     return 1
 }
 
-console.log(favorite_list)
+let faves = await buildFavorites()

@@ -43,30 +43,27 @@ function nth(n){return["st","nd","rd"][((n+90)%100-10)%10-1]||"th"}
 //console.log(Object.keys(testing_data.liveData.linescore));
 //console.log(testing_data.liveData.linescore.teams);
 
-async function getMLBReqTeams (teams) {
+async function getMLBStandings () {
   let latest_standings = [];
-  let favorite_division = [];
   let currentYr = new Date();
   currentYr = currentYr.getFullYear()
-  let fav_info = {};
-  let testing_data = await fetchData("https://statsapi.mlb.com/api/v1/standings?leagueId=103&season="+currentYr.toString()+"&standingsTypes=regularSeason");
-  for (div of testing_data.records) {
+  let standings_data = await fetchData("https://statsapi.mlb.com/api/v1/standings?leagueId=103&season="+currentYr.toString()+"&standingsTypes=regularSeason");
+  for (div of standings_data.records) {
     lg = div.league.id;
     dv = div.division.id;
     dv_info = await fetchData("https://statsapi.mlb.com/api/v1/divisions/"+dv.toString());
     dv_info = dv_info.divisions[0]
     for (tm of div.teamRecords) {
       record = tm.wins.toString()+"-"+tm.losses.toString()
-      if (tm.wildCardEliminationNumber == '-') {
+      if (tm.wildCardEliminationNumber == '-' && !tm.divisionLeader) {
         in_wildcard = true;
       } else {
         in_wildcard = false;
       }
       trimmed_team = {
         team : tm.team,
-        favorite : false,
-        rival : false,
         record : record,
+        games_played : tm.gamesPlayed,
         division : dv_info.id,
         division_name : dv_info.nameshort,
         div_place : tm.divisionRank,
@@ -79,28 +76,36 @@ async function getMLBReqTeams (teams) {
         div_lead : tm.divisionLeader,
         in_wc : in_wildcard,
       }
-      if (tm.team.name == 'Boston Red Sox') {
-          trimmed_team.favorite = true;
-          if (!favorite_division.includes(dv)) {
-            favorite_division.push(dv)
-          }
-          fav_info = JSON.parse(JSON.stringify(trimmed_team));
-          if (fav_info.div_gm_back == '-') {
-            fav_info.div_gm_back = "0";
-          }
-          if (fav_info.wc_gm_back == '-') {
-            fav_info.wc_gm_back = "0";
-          }
-      }
+      
       latest_standings.push(trimmed_team);
     }
   }
+  return latest_standings
+}
+
+let testFave = [{"id":111,"group":"201","name":"Boston Red Sox","league":"MLB","hideScores":false,"showRivals":true,"logo":"https://www.thesportsdb.com/images/media/team/badge/stpsus1425120215.png","theSportsDBID":"135252"}]
+
+async function getMLBRivals(favorites, current_standings=await getMLBStandings()) {
   //flag all the teams related to the favorites once all standings compiled
   // those in front in division and those in front in wc
   // if in first, flag second place
   // if more than seven games out dont bother
-  let req_teams = [];
-  req_teams.push(fav_info.team);
+  let req_teams = new Set();
+  
+  for (fav of favorites) {
+    req_teams.add(parseInt(fav.id))
+    let fav_standing
+    for (tm of current_standings) {
+      if (parseInt(tm.team.id) == parseInt(fav.id)) {
+        fav_standing = copyObject(tm)
+      }
+    }
+    if (fav_standing.games_played > 100) {
+      for (c of current_standings) {
+        if (fav_standing.)
+      }
+    }
+  }
 
   for (d_tm of latest_standings) {
     if (fav_info.division == d_tm.division && Math.max(2,parseInt(fav_info.div_place)) >= parseInt(d_tm.div_place) && fav_info.team.id != d_tm.team.id && parseFloat(fav_info.div_gm_back) < 7) {
@@ -114,6 +119,21 @@ async function getMLBReqTeams (teams) {
   }
   return req_teams;
 }
+
+if (parseInt(tm.team.id) == parseInt(favorites.id)) {
+  trimmed_team.favorite = true;
+  if (!favorite_division.includes(dv)) {
+    favorite_division.push(dv)
+  }
+  fav_info = JSON.parse(JSON.stringify(trimmed_team));
+  if (fav_info.div_gm_back == '-') {
+    fav_info.div_gm_back = "0";
+  }
+  if (fav_info.wc_gm_back == '-') {
+    fav_info.wc_gm_back = "0";
+  }
+}
+
 
 const getMLBGames = async (gmDate, teams) => {
   let empty_games = true;
@@ -175,7 +195,7 @@ const getMLBGames = async (gmDate, teams) => {
 let configTeams = [
   {lg : "mlb",
    fn : "getMLB",
-   tmid : 111,
+   id : 111,
    tmName : "Red Sox",
    hideScores : false}
 ]
@@ -196,15 +216,4 @@ async function prepFaves(favorites) {
   return prepped;
 }
 
-var getMLB = async (teams) => {
-  console.log(teams);
-  return 1;
-}
-
-let testTms = await prepFaves(configTeams);
-console.log(testTms)
-for (k of Object.keys(testTms)) {
-   x = testTms[k];
-  console.log(x)
-   check = await window[x.fn](x.ids);
-}
+console.log(await getMLBRivals(configTeams))

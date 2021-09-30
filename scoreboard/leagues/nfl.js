@@ -81,8 +81,8 @@ function pivotNFLTeams(team_list=nflESPNMap) {
 }
 
 async function getNFLStandings() {
-    let url = "https://site.api.espn.com/apis/v2/sports/football/nfl/standings?season=2020"
-//    let url = "https://site.api.espn.com/apis/v2/sports/football/nfl/standings"
+//    let url = "https://site.api.espn.com/apis/v2/sports/football/nfl/standings?season=2020"
+    let url = "https://site.api.espn.com/apis/v2/sports/football/nfl/standings"
     let baseReturn = await fetchData(url)
     let teams = []
     let team = {}
@@ -144,10 +144,7 @@ async function getNFLStandings() {
 
 let testFave = [{"id":17,"group":"afce","name":"New England Patriots","league":"nfl","hideScores":false,"showRivals":true,"logo":"https://www.thesportsdb.com/images/media/team/badge/xtwxyt1421431860.png","theSportsDBID":"134920"}]
 
-console.log(await getNFLStandings())
-
-async function getNFLRivals(favorites) {
-  let current_standings = await getNFLStandings()
+async function getNFLRivals(favorites, current_standings=await getNFLStandings()) {
   let nflWeeks = 17
   let rivals = new Set();
   for (fav of favorites) {
@@ -160,7 +157,8 @@ async function getNFLRivals(favorites) {
         favStanding = copyObject(tm)
       }
     }
-    if (favStanding.gamesPlayed > 12) {
+    //if (favStanding.gamesPlayed > 12) {
+    if (favStanding.gamesPlayed > 2) {
         for (c of conf_standings) {
             if (parseInt(c.id) == parseInt(fav.id)) {
                 continue
@@ -168,24 +166,19 @@ async function getNFLRivals(favorites) {
             if (fav.made_playoffs) {
                 if (parseInt(favStanding.seed) <= 4) {
                     if (parseInt(c.seed) <= 4 && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
-                        console.log(c.id.toString()+' = other division leader, reachable')
                         rivals.add(parseInt(c.id))
                     } else if (!favStanding.playoff_status_text.includes('Clinched Division') && c.division == fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
-                        console.log(c.id.toString()+' = division member, reachable, made playoffs')
                         rivals.add(parseInt(c.id))
                     }
                 } else {
                     if (parseInt(c.seed) <= 7 && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
-                        console.log(c.id.toString()+' = reachable, other wildcard team')
                         rivals.add(parseInt(c.id))
                     }
                 }
             } else {
                 if (!c.playoff_status_text.includes('Clinched Division') && parseInt(c.seed) <= parseInt(favStanding.seed) && c.division == fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
-                    console.log(c.id.toString()+' = division member, unclinched, higher seed, reachable')
                     rivals.add(parseInt(c.id))
                 } else if ([5,6,7].includes(parseInt(c.seed)) && parseInt(c.seed) <= parseInt(favStanding.seed) && c.division != fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
-                    console.log(c.id.toString()+' = other team in the hunt')
                     rivals.add(parseInt(c.id))
                 }
             }
@@ -193,4 +186,18 @@ async function getNFLRivals(favorites) {
     }
   }
   return Array.from(rivals)
+}
+
+let standings = await getNFLStandings()
+let rival_ids = await getNFLRivals(testFave,standings)
+let teams = pivotNFLTeams()
+
+for (rival of rival_ids) {
+    let team_text = teams[rival]['name']
+    for (s of standings) {
+        if (parseInt(s.id) == parseInt(rival)) {
+            team_text += ' are then '+s.seed.toString()+' seed'
+        }
+    }
+    console.log(team_text)
 }
