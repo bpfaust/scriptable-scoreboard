@@ -3,13 +3,13 @@
 // icon-color: gray; icon-glyph: magic;
 let fm = FileManager.iCloud()
 let baseLoc = fm.joinPath(fm.joinPath(fm.libraryDirectory(),'scriptable-scoreboard'),'settings')
+let today = await date_trunc(new Date())
 
 function date_trunc(date) {
   return new Date(date.getFullYear(),date.getMonth(),date.getDate(),4)
 }
 
 async function needToRefreshTeams() {
-  let today = await date_trunc(new Date())
   let result
   let teamsDate
   let favoritesDate

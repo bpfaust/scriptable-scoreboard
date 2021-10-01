@@ -8,66 +8,13 @@ const smartScoreboard = {
     initialize(name, iCloudUsed) {
         this.name = name
         this.fm = iCloudUsed ? FileManager.iCloud() : FileManager.local()
-        this.bgPath = this.fm.joinPath(this.fm.libraryDirectory(), "smartscore-" + this.name)
-        this.prefPath = this.fm.joinPath(this.fm.libraryDirectory(), "smartscore-preferences-" + name)
+        this.baseLoc = this.fm.joinPath(this.fm.joinPatht(this.fm.libraryDirectory(),'scriptable-scoreboard'),'settings')
         this.now = new Date()
-        this.favorites = []
-        this.data = {}
+        this.today = new Date(this.now.getFullYear(),this.now.getMonth(),this.now.getDate(),4)
         this.initialized = true
     },
 
-    async generatePrompt(title,message,options,textvals,placeholders) {
-        const alert = new Alert()
-        alert.title = title
-        if (message) alert.message = message
-
-        const buttons = options || ["OK"]
-        for (button of buttons) { alert.addAction(button) }
-
-        if (!textvals) { return await alert.presentAlert() }
-
-        for (i=0; i < textvals.length; i++) {
-            alert.addTextField(placeholders && placeholders[i] ? placeholders[i] : null,(textvals[i] || "") + "")
-        }
-
-        if (!options) await alert.present()
-        return alert
-    },
-
-    async generateAlert(title,options,message) {
-        return await generatePrompt(title,message,options)
-    },
-
-    async runSetup(name, iCloudUsed, codeFilename) {
-        if (!this.initialized) this.initialize(name, iCloudUsed)
-        const backgroundSettingExists = this.fm.fileExists(this.bgPath)
-
-        if (!this.fm.fileExists(this.fm.joinPath(this.fm.libraryDirectory(), "smartscore-setup"))) return await this.initialSetup(backgroundSettingExists)
-        if (backgroundSettingExists) return await this.editSettings(codeFilename)
-        await this.generateAlert("Your scoreboard is configured.  Please choose a background for the widget.", ["Continue"])
-        return await this.setWidgetBackground()
-    },
-
-    async NBAleagueYear() {
-        let yr = this.now.getFullYear();
-        if (this.now.getMonth() < 9) {
-            yr = yr - 1;
-        }
-        return yr
-    },
-
-    async initialSetup(imported = false) {
-        let message, options
-        if (!imported) {}
-    },
-
-    async fetchData(url, type='loadJSON') {
-        const request = new Request(url)
-        const res = await request[type]();
-        return res
-    },
-
-    async getTeams(league) {
+    nflMap() {
         const nflESPNMap = {
             'Arizona Cardinals' : {id : 22, group: "nfcw", name: "Arizona Cardinals"},
             'Atlanta Falcons' : {id : 1, group: "nfcs", name: "Atlanta Falcons"},
@@ -102,40 +49,90 @@ const smartScoreboard = {
             'Baltimore Ravens' : {id: 33, group: "afcn", name: "Baltimore Ravens"},
             'Houston Texans' : {id: 34, group: "afcs", name: "Houston Texans"}
         }
-        let leagueSet = {
+        return nflESPNMap
+    },
+
+    apiURLs(league,call) {
+        let api_directory = {
             mlb : {
                 leagueName : 'MLB',
-                leagueURL : 'https://statsapi.mlb.com/api/v1/teams?sportId=1',
+                teams : 'https://statsapi.mlb.com/api/v1/teams?sportId=1',
+                standings : "https://statsapi.mlb.com/api/v1/standings?leagueId=103&season=$current_year&standingsTypes=regularSeason",
+                divisions : "https://statsapi.mlb.com/api/v1/divisions/$division_id",
+                schedule : "https://statsapi.mlb.com/api/v1/schedule?date=$score_date&sportId=1&teamId=$team_id_string",
+                live : "https://statsapi.mlb.com$game_link"
             },
             nba : {
                 leagueName : 'NBA',
-                leagueURL : 'http://data.nba.net/data/10s/prod/v1/$1/teams.json',
+                teams : "https://data.nba.net/data/10s/prod/v1/$nba_league_year/teams.json",
+                standings: "https://data.nba.net/prod/v1/current/standings_conference.json",
+                schedule: "https://data.nba.net/10s/prod/v1/$score_date/scoreboard.json",
+                live: "https://data.nba.net/data/10s/prod/v1/$score_date/$game_id_mini_boxscore.json",
             },
-            nfl : {
-                leagueName : 'NFL',
+            nhl : {
+                leagueName: 'NHL',
+                teams : "https://statsapi.web.nhl.com/api/v1/teams",
+                standings: "",
+                schedule: "",
+                live: ""
+            },
+            nfl: {
+                leagueName: 'NFL',
+                standings: "",
+                schedule: "",
+                live: ""
+            },
+            epl: {
+                leagueName: 'English Premier League',
+                teams : "http://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/teams?limit=99",
+                standings: "",
+                schedule: "",
+                live: ""
             }
         }
+        return api_directory[league][call]
+    },
+
+    async runSetup(name, iCloudUsed, codeFilename) {
+        if (!this.initialized) this.initialize(name, iCloudUsed)
+        const backgroundSettingExists = this.fm.fileExists(this.bgPath)
+
+        if (!this.fm.fileExists(this.fm.joinPath(this.fm.libraryDirectory(), "smartscore-setup"))) return await this.initialSetup(backgroundSettingExists)
+        if (backgroundSettingExists) return await this.editSettings(codeFilename)
+        await this.generateAlert("Your scoreboard is configured.  Please choose a background for the widget.", ["Continue"])
+        return await this.setWidgetBackground()
+    },
+
+    
+
+    async initialSetup(imported = false) {
+        let message, options
+        if (!imported) {}
+    },
+
+    
+
+    // * BUILD FAVORITES FILE *//
+    async getTeams(league) {
+        let nflESPNMap = await this.nflMap()
         let output = [];
         if (league == "NFL") {
             for (o of Object.keys(nflESPNMap)) {
                 output.push(nflESPNMap[o])
             }
         } else {
-            for (lr of Object.keys(leagueSet)) {
-                if (leagueSet[lr].leagueName == league) {
-                    lgURL = leagueSet[lr].leagueURL
-                }
-            }
+            let lgURL = await this.apiURLs(league.toLowerCase(),'teams')
             if (league == 'NBA') {
-                lgURL = lgURL.replace('$1',(await NBAleagueYear()).toString())
+                lgURL = lgURL.replace('$nba_league_year',(await this.NBAleagueYear()).toString())
             }
-            let baseReturn = await fetchData(lgURL);
+            let baseReturn = await this.fetchData(lgURL);
             if (league == 'MLB') {
                 for (t of baseReturn.teams) {
                     t_obj = {
                         id : t.id,
                         name : t.name,
-                        group : t.division.id.toString()
+                        group : t.division.id.toString(),
+                        league : league
                     }
                     output.push(t_obj)
                 }
@@ -144,9 +141,32 @@ const smartScoreboard = {
                     t_obj = {
                         id : t.teamId,
                         name : t.fullName,
-                        group : t.confName.toLowerCase()
+                        group : t.confName.toLowerCase(),
+                        league : league
                     }
                     output.push(t_obj)
+                }
+            } else if (league == 'English Premier League') {
+                for (t of baseReturn.sports[0].leagues[0].teams) {
+                    t_obj = {
+                        id: t.team.id,
+                        name : t.team.name,
+                        group : '700',
+                        league : league
+                    }
+                    output.push(t_obj)
+                }
+            } else if (league == 'NHL') {
+                for (t of baseReturn.teams) {
+                    if (t.active) {
+                        t_obj = {
+                            id : t.id,
+                            name : t.name,
+                            group : t.conference.id.toString(),
+                            league : league
+                        }
+                        output.push(t_obj)
+                    }
                 }
             }
         }
@@ -205,7 +225,191 @@ const smartScoreboard = {
 
     },
 
+    //* HELPER FUNCTIONS *//
 
+    copyObject(object) {
+        return JSON.parse(JSON.stringify(object));
+    },
 
+    async fetchData(url, type='loadJSON') {
+        const request = new Request(url)
+        const res = await request[type]();
+        return res
+    },
 
+    async generatePrompt(title,message,options,textvals,placeholders) {
+        const alert = new Alert()
+        alert.title = title
+        if (message) alert.message = message
+
+        const buttons = options || ["OK"]
+        for (button of buttons) { alert.addAction(button) }
+
+        if (!textvals) { return await alert.presentAlert() }
+
+        for (i=0; i < textvals.length; i++) {
+            alert.addTextField(placeholders && placeholders[i] ? placeholders[i] : null,(textvals[i] || "") + "")
+        }
+
+        if (!options) await alert.present()
+        return alert
+    },
+
+    async generateAlert(title,options,message) {
+        return await generatePrompt(title,message,options)
+    },
+
+    NBAleagueYear() {
+        let yr = this.now.getFullYear();
+        if (this.now.getMonth() < 9) {
+            yr = yr - 1;
+        }
+        return yr
+    },
+
+    saveFile(filename, contents) {
+        let fileContents = typeof contents == "string" ? contents : JSON.stringify(contents)
+        this.fm.writeString(this.fm.joinPath(this.baseLoc, filename), fileContents)
+    },
+
+    readFile(filename, path=this.baseLoc) {
+        let fullPath = this.fm.joinPath(path, filename)
+        if (this.fm.fileExists(fullPath)) {
+            return [true,JSON.parse(this.fm.readString(fullPath))]
+        } else {
+            return [false,filename+" does not exist"]
+        }
+    },
+
+    getFormattedURLDate(date, date_type) {
+        let working_date = new Date(date);
+        let output_date;
+        let yr = working_date.getFullYear().toString();
+        let mnth = ("0" + (working_date.getMonth()+1)).slice(-2);
+        let dy = ("0" + working_date.getDate()).slice(-2);
+        if (date_type == 2) {
+            output_date = "year_"+yr+"/month_"+mnth+"/day_"+dy;
+        } else if (date_type == 3) {
+            output_date = yr+mnth+dy;
+        } else {
+            output_date = yr+'-'+mnth+'-'+dy;
+        }
+        return output_date;
+    },
+
+    getISODate(date) {
+        let working_date = new Date(date);
+        let yr = working_date.getFullYear().toString();
+        let mnth = ("0" + (working_date.getMonth()+1)).slice(-2);
+        let dy = ("0" + working_date.getDate()).slice(-2);
+        let output_date = yr+'-'+mnth+'-'+dy;
+        return output_date;
+    },
+
+    nth(n){return["st","nd","rd"][((n+90)%100-10)%10-1]||"th"},
+
+    date_trunc(date) {
+        return new Date(date.getFullYear(),date.getMonth(),date.getDate(),4)
+    },
+
+    //* LEAGUE FUNCTIONS *//
+    //! mlb //
+
+    //! nba //
+    async getNBAStandings() {
+        let standings_file_path = this.fm.joinPath(this.baseLoc, 'nba-standings.txt')
+        let final_standings
+        if (this.fm.fileExists(standings_file_path) && this.fm.modificationDate(standings_file_path) >= this.today) {
+            standings_contents = await this.readFile('nba-standings.txt')
+            final_standings = standings_contents[0] ? this.copyObject(standings_contents[1]) : []
+        } else {
+            final_standings = await this.fetchNBAStandings()
+            await this.saveFile('nba-standings.txt',final_standings)
+        }
+    
+        if (final_standings.length == 0) {
+            final_standings = await this.fetchNBAStandings()
+            await this.saveFile('nba-standings.txt',final_standings)
+        }
+        return final_standings
+    },
+
+    async fetchNBAStandings() {
+        let final_standings = []
+        let url = await this.apiURLs('nba','standings')
+        let baseData = await this.fetchData(url)
+        if (Object.keys(baseData).includes("league")) {
+            standings = baseData.league.standard.conference
+        } else {
+            standings = {}
+        }
+        for (conf in standings) {
+            for (tm of standings[conf]) {
+                team_obj = {
+                    name : tm.teamSitesOnly.teamName+' '+tm.teamSitesOnly.teamNickname,
+                    id: tm.teamID,
+                    conf: conf,
+                    conf_rank : tm.confRank,
+                    conf_games_back: parseInt(tm.gamesBehind)*-1,
+                    in_playoffs: parseInt(tm.teamSitesOnly.clinchedPlayoffs) == 1 ? true : false,
+                    games_played: parseInt(tm.win)+parseInt(tm.loss)
+                }
+                final_standings.push(team_obj)
+            }
+        }
+        return final_standings
+    },
+
+    getNBARivals(favorites, current_standings) {
+        let favorite_conf
+        let favorite_info = {};
+        let req_teams = new Set();
+    
+        for (fav of favorites) {
+            req_teams.add(fav.id)
+            favorite_conf = fav.group
+            for (fc of current_standings[favorite_conf]) {
+                if (fc.id == fav.id) {
+                    favorite_info = this.copyObject(fc)
+                }
+            }
+            if (favorite_info.games_played > 50) {
+                for (t of current_standings[favorite_conf]) {
+                    if (Math.abs(parseInt(t.conf_games_back) - parseInt(favorite_info.conf_games_back)) <= 3) {
+                        if (parseInt(favorite_info.conf_rank) <= 8 && Math.abs(parseInt(favorite_info.conf_rank)-parseInt(t.conf_rank)) <= 1) {
+                            req_teams.add(t.id)
+                        } else if (parseInt(favorite_info.conf_rank) > 8 && parseInt(t.conf_rank) >= 8) {
+                            req_teams.add(t.id)
+                        }
+                    }
+                }
+            }
+        }
+        return Array.from(req_teams);
+    },
+
+    async getNBATeams(favorites) {
+        let current_standings = await this.getNBAStandings()
+        let team_ids = await this.getNBARivals(favorites, current_standings)
+        let final_teams = []
+        for (tm of current_standings) {
+            for (t of team_ids) {
+                if (parseInt(tm.id) === parseInt(t)) {
+                    text_games_back = tm.conf_games_back < 0 ? ' | '+tm.conf_games_back.toString() : ''
+                    text_standings = tm.conf_rank.toString()+text_games_back
+                    team_object = {
+                        name: tm.name,
+                        id: t,
+                        standings:text_standings
+                    }
+                    final_teams.push(team_object)
+                }
+            }
+        }
+        return final_teams
+    },
+
+    //* GAME RELATED FUNCTIONS *//
+
+    //* WIDGET CONSTRUCTION *//
 }

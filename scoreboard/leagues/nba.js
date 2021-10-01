@@ -1,13 +1,10 @@
 // Variables used by Scriptable.
 // These must be at the very top of the file. Do not edit.
 // icon-color: deep-brown; icon-glyph: basketball-ball;
-let configTeams = {
-    lg: "nba",
-    fn: "getNBA",
-    tmid: 1610612738,
-    tmName: "Celtics",
-    hideScores: false
-}
+
+function copyObject(object) {
+    return JSON.parse(JSON.stringify(object));
+  }
 
 async function fetchData(url, type='loadJSON') {
     const request = new Request(url)
@@ -23,49 +20,96 @@ function getNBADateFormat(date) {
     return yr+mnth+dy;
 }
 
-async function getNBAReqTeams(teams) {
-    var favorite_conf;
-    let favorite_info = {};
-    let req_teams = []
+async function getNBAStandings() {
+    let standings_file_path = fm.joinPath(baseLoc, 'nba-standings.txt')
+    let final_standings
+    if (fm.fileExists(standings_file_path) && fm.modificationDate(standings_file_path) >= today) {
+        standings_contents = await readFile('nba-standings.txt')
+        final_standings = standings_contents[0] ? copyObject(standings_contents[1]) : []
+    } else {
+        final_standings = await fetchNBAStandings()
+        await saveFile('nba-standings.txt',final_standings)
+    }
+
+    if (final_standings.length == 0) {
+        final_standings = await fetchNBAStandings()
+        await saveFile('nba-standings.txt',final_standings)
+    }
+    return final_standings
+}
+
+async function fetchNBAStandings() {
+    let final_standings = []
     let baseData = await fetchData("http://data.nba.net/prod/v1/current/standings_conference.json")
     if (Object.keys(baseData).includes("league")) {
         standings = baseData.league.standard.conference
     } else {
         standings = {}
     }
-    for (cnf of Object.keys(standings)) {
-        for (t of standings[cnf]) {
-            if (teams.includes(t.teamId)) {
-                favorite_conf = cnf;
-                favorite_info = JSON.parse(JSON.stringify(t));
+    for (conf in standings) {
+        for (tm of standings[conf]) {
+            team_obj = {
+                name : tm.teamSitesOnly.teamName+' '+tm.teamSitesOnly.teamNickname,
+                id: tm.teamID,
+                conf: conf,
+                conf_rank : tm.confRank,
+                conf_games_back: parseInt(tm.gamesBehind)*-1,
+                in_playoffs: parseInt(tm.teamSitesOnly.clinchedPlayoffs) == 1 ? true : false,
+                games_played: parseInt(tm.win)+parseInt(tm.loss)
+            }
+            final_standings.push(team_obj)
+        }
+    }
+    return final_standings
+}
+
+function getNBARivals(favorites, current_standings) {
+    let favorite_conf
+    let favorite_info = {};
+    let req_teams = new Set();
+
+    for (fav of favorites) {
+        req_teams.add(fav.id)
+        favorite_conf = fav.group
+        for (fc of current_standings[favorite_conf]) {
+            if (fc.id == fav.id) {
+                favorite_info = copyObject(fc)
+            }
+        }
+        if (favorite_info.games_played > 50) {
+            for (t of current_standings[favorite_conf]) {
+                if (Math.abs(parseInt(t.conf_games_back) - parseInt(favorite_info.conf_games_back)) <= 3) {
+                    if (parseInt(favorite_info.conf_rank) <= 8 && Math.abs(parseInt(favorite_info.conf_rank)-parseInt(t.conf_rank)) <= 1) {
+                        req_teams.add(t.id)
+                    } else if (parseInt(favorite_info.conf_rank) > 8 && parseInt(t.conf_rank) >= 8) {
+                        req_teams.add(t.id)
+                    }
+                }
             }
         }
     }
-    for (tt of standings[favorite_conf]) {
-        //if favorite is leading the conference, get the second place unless more than 3 games up
-        //if in top 8 get teams 1 above and 1 back within 3 games
-        //if below 8, get all teams between them and 8 within 3 games of the team
-        if (tt.teamId == favorite_info.teamId) {
-            req_teams.push(tt.teamId);
-        } else if (Math.abs(parseFloat(tt.gamesBehind) - parseFloat(favorite_info.gamesBehind)) <= 3) {
-            if (parseInt(favorite_info.confRank) <= 8 && Math.abs(parseInt(favorite_info.confRank) - parseInt(tt.confRank)) <= 1) {
-                req_teams.push(tt.teamId)
-            } else if (parseInt(favorite_info.confRank) > 8 && parseInt(tt.confRank) >= 8) {
-                req_teams.push(tt.teamId);
+    return Array.from(req_teams);
+}
+
+async function getNBATeams(favorites) {
+    let current_standings = await getNBAStandings()
+    let team_ids = await getNBARivals(favorites, current_standings)
+    let final_teams = []
+    for (tm of current_standings) {
+        for (t of team_ids) {
+            if (parseInt(tm.id) === parseInt(t)) {
+                text_games_back = tm.conf_games_back < 0 ? ' | '+tm.conf_games_back.toString() : ''
+                text_standings = tm.conf_rank.toString()+text_games_back
+                team_object = {
+                    name: tm.name,
+                    id: t,
+                    standings:text_standings
+                }
+                final_teams.push(team_object)
             }
         }
     }
-    return req_teams;
+    return final_teams
 }
-
-async function getNBAGames(gmDate, teams) {
-    let empty_games = true;
-    let scoreDate = new Date(gmDate);
-    let tm_ids = []
-
-}
-
-let test = await getNBAReqTeams(["1610612738"]);
-
 
 console.log(test)
