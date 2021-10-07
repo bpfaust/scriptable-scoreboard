@@ -2,6 +2,8 @@
 // These must be at the very top of the file. Do not edit.
 // icon-color: teal; icon-glyph: magic;
 
+const { current } = require("./reference/weather-cal-js")
+
 
 const smartScoreboard = {
 
@@ -52,7 +54,7 @@ const smartScoreboard = {
         return nflESPNMap
     },
 
-    apiURLs(league,call) {
+    apiURLs(league,call,parameters) {
         let api_directory = {
             mlb : {
                 leagueName : 'MLB',
@@ -78,19 +80,27 @@ const smartScoreboard = {
             },
             nfl: {
                 leagueName: 'NFL',
-                standings: "",
+                standings: "https://site.api.espn.com/apis/v2/sports/football/nfl/standings",
                 schedule: "",
                 live: ""
             },
             epl: {
                 leagueName: 'English Premier League',
                 teams : "http://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/teams?limit=99",
-                standings: "",
+                standings: "http://site.api.espn.com/apis/v2/sports/soccer/eng.1/standings",
                 schedule: "",
                 live: ""
             }
         }
-        return api_directory[league][call]
+        let url = api_directory[league][call]
+
+        if (parameters) {
+            for (param in parameters) {
+                url = url.replace(param,parameters[param])
+            }
+        }
+
+        return url
     },
 
     async runSetup(name, iCloudUsed, codeFilename) {
@@ -267,6 +277,16 @@ const smartScoreboard = {
         return yr
     },
 
+    NHLleagueYear() {
+        let yr = this.now.getFullYear
+        if (this.now.getMonth() < 9) {
+            yr = (yr-1).toString()+yr.toString()
+        } else {
+            yr = yr.toString()+(yr+1).toString()
+        }
+        return yr
+    },
+
     saveFile(filename, contents) {
         let fileContents = typeof contents == "string" ? contents : JSON.stringify(contents)
         this.fm.writeString(this.fm.joinPath(this.baseLoc, filename), fileContents)
@@ -314,6 +334,118 @@ const smartScoreboard = {
 
     //* LEAGUE FUNCTIONS *//
     //! mlb //
+    async getMLBStandings() {
+        let standings_file_path = this.fm.joinPath(this.baseLoc, 'mlb-standings.txt')
+        let final_standings
+        if (this.fm.fileExists(standings_file_path) && this.fm.modificationDate(standings_file_path) >= this.today) {
+            standings_contents = await this.readFile('mlb-standings.txt')
+            final_standings = standings_contents[0] ? this.copyObject(standings_contents[1]) : []
+        } else {
+            final_standings = await this.fetchMLBStandings()
+            await this.saveFile('mlb-standings.txt',final_standings)
+        }
+    
+        if (final_standings.length == 0) {
+            final_standings = await this.fetchMLBStandings()
+            await this.saveFile('mlb-standings.txt',final_standings)
+        }
+        return final_standings
+    },
+
+    async fetchMLBStandings () {
+        let latest_standings = [];
+        let currentYr = this.now.getFullYear()
+        let url = await this.apiURLs('mlb','standings',{'$current_year': currentYr.toString()})
+        let standings_data = await this.fetchData(url);
+        for (div of standings_data.records) {
+            lg = div.league.id;
+            dv = div.division.id;
+            dv_info = await this.fetchData(await this.apiURLs('mlb','divisions',{'$division_id': dv.toString()}));
+            dv_info = dv_info.divisions[0]
+            for (tm of div.teamRecords) {
+                record = tm.wins.toString()+"-"+tm.losses.toString()
+                if (tm.wildCardEliminationNumber == '-' && !tm.divisionLeader) {
+                    in_wildcard = true;
+                } else {
+                    in_wildcard = false;
+                }
+                trimmed_team = {
+                    team : tm.team,
+                    record : record,
+                    games_played : tm.gamesPlayed,
+                    division : dv_info.id,
+                    division_name : dv_info.nameshort,
+                    div_leader : tm.divisionLeader,
+                    div_place : tm.divisionRank,
+                    div_place_str : tm.divisionRank+this.nth(parseInt(tm.divisionRank)),
+                    lg_place_str: tm.leageRank+this.nth(parseInt(tm.leagueRank)),
+                    wc_place : tm.wildCardRank,
+                    wc_place_str : 'W'+tm.wildCardRank,
+                    div_gm_back : tm.divisionGamesBack,
+                    wc_gm_back : tm.wildCardGamesBack,
+                    league : lg,
+                    div_lead : tm.divisionLeader,
+                    in_wc : in_wildcard,
+                }
+            
+                latest_standings.push(trimmed_team);
+            }
+        }
+        return latest_standings
+    },
+
+    async getMLBRivals(favorites, current_standings) {
+        let req_teams = new Set();
+        let fav_standing
+        
+        for (fav of favorites) {
+            req_teams.add(parseInt(fav.id))
+            for (tm of current_standings) {
+                if (parseInt(tm.team.id) == parseInt(fav.id)) {
+                fav_standing = this.copyObject(tm)
+                }
+            }
+            if (fav_standing.games_played > 100) {
+                for (c of current_standings) {
+                    if (fav_standing.division == c.division && fav_standing.team.id != c.team.id && (Math.max(2,parseInt(fav_standing.div_place)) >= parseInt(c.div_place) || Math.abs(parseInt(fav_standing.div_place)-parseInt(c.div_place)) == 1) && Math.abs(parseFloat(fav_standing.div_gm_back)-parseFloat(c.div_gm_back)) < 7) {
+                        req_teams.add(parseInt(c.team.id))
+                    }
+                    if (!fav_standing.div_lead && !c.div_lead) {
+                        if (fav_standing.league == c.league && Math.max(3,parseInt(fav_standing.wc_place)) >= parseInt(c.wc_place) && fav_standing.team.id != c.team.id && parseFloat(fav_standing.wc_gm_back) < 7) {
+                            req_teams.add(parseInt(c.team.id))
+                        }
+                    }
+                }
+            }
+        }
+        return Array.from(req_teams)
+    },
+
+    async getMLBTeams(favorites) {
+        let current_standings = await this.getMLBStandings()
+        let team_ids = await this.getMLBRivals(favorites, current_standings)
+        let final_teams = []
+        for (tm of current_standings) {
+            for (t of team_ids) {
+                if (parseInt(tm.team.id) == parseInt(t)) {
+                    text_games_back_div = tm.div_leader ? tm.div_place.toString() : '-'+tm.div_gm_back.toString()
+                    if (parseInt(tm.wc_gm_back) > 8 || tm.div_leader) {
+                      text_games_back_wc = false
+                    } else {
+                      text_games_back_wc = tm.in_wc ? tm.wc_place_str : '-'+tm.wc_gm_back.toString()
+                    }
+                    text_standings = !text_games_back_wc ? text_games_back_div : text_games_back_div+' | '+text_games_back_wc
+                    team_object = {
+                        name : tm.team.name,
+                        id : t,
+                        standings : text_standings
+                    }
+                    final_teams.push(team_object)
+                }
+            }
+        }
+        return final_teams
+    },
 
     //! nba //
     async getNBAStandings() {
@@ -406,6 +538,267 @@ const smartScoreboard = {
                 }
             }
         }
+        return final_teams
+    },
+    
+    //! nfl //
+    sortNFLConference(team1, team2) {
+        let stats1 = team1.stats
+        let stats2 = team2.stats
+        let seed1
+        let seed2
+        for (s1 of stats1) {
+            if (s1.name === 'playoffSeed') {
+                seed1 = parseInt(s1.value)
+            }
+        }
+        for (s2 of stats2) {
+            if (s2.name === 'playoffSeed') {
+                seed2 = parseInt(s2.value)
+            }
+        }
+      
+        return seed1 > seed2
+    },
+
+    pivotNFLTeams(team_list) {
+        let id_based = {}
+        for (tm in team_list) {
+            let team_info = team_list[tm]
+            id_based[team_info.id] = copyObject(team_info)
+        }
+        return id_based
+    },
+
+    async getNFLStandings() {
+        let standings_file_path = this.fm.joinPath(this.baseLoc, 'nfl-standings.txt')
+        let final_standings
+        if (this.fm.fileExists(standings_file_path) && this.fm.modificationDate(standings_file_path) >= this.today) {
+            standings_contents = await this.readFile('nfl-standings.txt')
+            final_standings = standings_contents[0] ? this.copyObject(standings_contents[1]) : []
+        } else {
+            final_standings = await this.fetchNFLStandings()
+            await this.saveFile('nfl-standings.txt',final_standings)
+        }
+    
+        if (final_standings.length == 0) {
+            final_standings = await this.fetchNFLStandings()
+            await this.saveFile('nfl-standings.txt',final_standings)
+        }
+        return final_standings
+    },
+
+    async fetchNFLStandings() {
+        let url = await this.apiURLs('nfl','standings')
+        let baseReturn = await this.fetchData(url)
+        let teams = []
+        let team = {}
+        let standings = {}
+        let gamesPlayed;
+        let league_teams = await this.pivotNFLTeams(await this.nflMap())
+        
+        if (Object.keys(baseReturn).includes('children')) {
+            let coreStandings = baseReturn.children
+            for (conference of coreStandings) {
+                teams = []
+                conf_name = conference.abbreviation.toLowerCase()
+                rankings = this.copyObject(conference.standings.entries)
+                rankings.sort(sortNFLConference)
+        
+                for (let e = 0; e < rankings.length; e++) {
+                    let entry = rankings[e]
+                    team = {}
+                    team['id'] = entry.team.id
+                    team['made_playoffs'] = false
+                    team['division'] = league_teams[team['id']]['group']
+                    gamesPlayed = 0
+                    for (stat of entry.stats) {
+                        if (stat.description === 'Playoff Seed') {
+                            team['seed'] = stat.value.toString()
+                        } else if (stat.description === 'Games Back') {
+                            team['games_back'] = stat.value
+                        } else if (stat.name === 'clincher') {
+                            team['playoff_status_text'] = stat.description
+                            team['playoff_status'] = stat.displayValue
+                            if (team['playoff_status'] != 'e') {
+                                team.made_playoffs = true
+                            }
+                        } else if (stat.name == "wins" || stat.name == "losses") {
+                            team[stat.name] = stat.value
+                            gamesPlayed = gamesPlayed + parseInt(stat.value)
+                        }
+                    }
+                    team["gamesPlayed"] = gamesPlayed
+                    if (!Object.keys(team).includes('playoff_status_text')) {
+                        team['playoff_status_text'] = 'None'
+                        team['playoff_status'] = 'na'
+                    }
+                    teams.push(team)
+                }
+
+                for (let t = 0; t < teams.length; t++) {
+                    if (t == 0) {
+                        teams[t].games_back_next = 0
+                    } else {
+                        teams[t].games_back_next = teams[t].games_back - teams[t-1].games_back
+                    }
+                }
+
+                standings[conf_name] = teams
+            }
+        }
+        return standings
+    },
+
+    async getNFLRivals(favorites, current_standings) {
+        let nflWeeks = 17
+        let rivals = new Set();
+        for (fav of favorites) {
+            rivals.add(fav.id)
+            let conf = fav.group.slice(0, 3)
+            let favStanding
+            let conf_standings = current_standings[conf]
+            for (tm of conf_standings) {
+                if (tm.id == fav.id) {
+                    favStanding = this.copyObject(tm)
+                }
+            }
+
+            if (favStanding.gamesPlayed > 12) {
+                for (c of conf_standings) {
+                    if (parseInt(c.id) == parseInt(fav.id)) {
+                        continue
+                    }
+                    if (fav.made_playoffs) {
+                        if (parseInt(favStanding.seed) <= 4) {
+                            if (parseInt(c.seed) <= 4 && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                                rivals.add(parseInt(c.id))
+                            } else if (!favStanding.playoff_status_text.includes('Clinched Division') && c.division == fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                                rivals.add(parseInt(c.id))
+                            }
+                        } else {
+                            if (parseInt(c.seed) <= 7 && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                                rivals.add(parseInt(c.id))
+                            }
+                        }
+                    } else {
+                        if (!c.playoff_status_text.includes('Clinched Division') && parseInt(c.seed) <= parseInt(favStanding.seed) && c.division == fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                            rivals.add(parseInt(c.id))
+                        } else if ([5,6,7].includes(parseInt(c.seed)) && parseInt(c.seed) <= parseInt(favStanding.seed) && c.division != fav.group && Math.abs(parseInt(favStanding.games_back) - parseInt(c.games_back)) <= nflWeeks - parseInt(favStanding.gamesPlayed)) {
+                            rivals.add(parseInt(c.id))
+                        }
+                    }
+                }
+            }
+        }
+        return Array.from(rivals)
+    },
+
+    async getNFLTeams(favorites) {
+        let current_standings = await this.getNFLStandings()
+        let team_ids = await this.getNFLRivals(favorites, current_standings)
+        let team_list = this.pivotNFLTeams(await this.nflMap())
+        let final_teams = []
+        for (conf in current_standings) {
+            for (s of current_standings[conf]) {
+                for (t of team_ids) {
+                    if (parseInt(s.id) == parseInt(t)) {
+                        text_games_back = (parseInt(s.games_back)*-1) > 0 ? "+"+(parseInt(s.games_back) * -1).toString() : (parseInt(s.games_back) * -1).toString()
+                        team_object = {
+                            name : team_list[t]['name'],
+                            id : t,
+                            standings : s.seed.toString()+" | "+text_games_back
+                        }
+                        final_teams.push(team_object)
+                    }
+                }
+            }
+        }
+        return final_teams
+    },
+    
+    //! epl //
+    async getEPLStandings() {
+        let standings_file_path = this.fm.joinPath(this.baseLoc, 'epl-standings.txt')
+        let final_standings
+        if (this.fm.fileExists(standings_file_path) && this.fm.modificationDate(standings_file_path) >= this.today) {
+            standings_contents = await this.readFile('epl-standings.txt')
+            final_standings = standings_contents[0] ? this.copyObject(standings_contents[1]) : []
+        } else {
+            final_standings = await this.fetchEPLStandings()
+            await this.saveFile('epl-standings.txt',final_standings)
+        }
+    
+        if (final_standings.length == 0) {
+            final_standings = await this.fetchEPLStandings()
+            await this.saveFile('epl-standings.txt',final_standings)
+        }
+        return final_standings
+    },
+
+    async fetchEPLStandings() {
+        let raw_table = await this.fetchData(await this.apiURLs('epl','standings'))
+        if ('children' in raw_table) {
+            let dims = ['rank','points','gamesPlayed']
+            let proc_table = []
+            let table = raw_table.children[0].standings.entries
+            for (tm of table) {
+                let obj = {
+                    name: tm.team.name,
+                    id: tm.team.id,
+                }
+                for (stat of tm.stats) {
+                    if (dims.includes(stat.name)) {
+                        obj[stat.name] = stat.value
+                    }
+                }
+                proc_table.push(obj)
+            }
+            return proc_table
+        } else {
+            return []
+        }
+    },
+
+    async getEPLRivals(favorites, standings) {
+        let favorite_standing;
+        let req_teams = new Set();
+        
+        for (fav of favorites) {
+            req_teams.add(fav.id)
+            for (t of standings) {
+                if (t.id == fav.id) {
+                    favorite_standing = this.copyObject(t)
+                }
+            }
+            if (parseInt(favorite_standing.gamesPlayed) > 28) {
+                for (tt of standings) {
+                    if (Math.abs(parseInt(favorite_standing.points)-parseInt(tt.points)) < (38-parseInt(favorite_standing.gamesPlayed))*3) {
+                        req_teams.add(tt.id)
+                    }
+                }
+            }
+        }
+        return Array.from(req_teams)
+    },
+
+    async getEPLTeams(favorites) {
+        let current_standings = await this.getEPLStandings()
+        let team_ids = await this.getEPLRivals(favorites, current_standings)
+        let final_teams = []
+        for (rival of team_ids) {
+            for (tm of current_standings) {
+                if (parseInt(r) == parseInt(tm.id)) {
+                    let tobj = {
+                        name = tm.name,
+                        id: rival,
+                        standings: tm.rank.toString()+' ('+tm.points.toString()+')'
+                    }
+                    final_teams.push(tobj)
+                }
+            }
+        }
+        
         return final_teams
     },
 
